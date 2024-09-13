@@ -18,9 +18,9 @@ DECLARE
   found TEXT;
   user_id BOOLEAN;
 BEGIN
-  -- generate the first part of a query as a string with safely
-  -- escaped table name, using || to concat the parts
-  qry := 'SELECT id FROM ' || quote_ident(TG_TABLE_NAME) || ' WHERE id=';
+  -- generate the query as a string with safely escaped table name
+  -- and a placeholder for the value
+  qry := format('SELECT EXISTS (SELECT FROM %I WHERE id=$1)', TG_TABLE_NAME);
 
   LOOP
     -- deal with user-supplied keys, they don't have to be valid base64
@@ -41,16 +41,11 @@ BEGIN
       user_id := FALSE;
     END IF;
 
-    -- Concat the generated key (safely quoted) with the generated query
-    -- and run it.
-    -- SELECT id FROM "test" WHERE id='blahblah' INTO found
-    -- Now "found" will be the duplicated id or NULL.
-    EXECUTE qry || quote_literal(key) INTO found;
+    -- Check for collision
+    -- SELECT EXISTS (SELECT FROM "test" WHERE id='blahblah') INTO found
+    EXECUTE qry INTO found USING key;
 
-    -- Check to see if found is NULL.
-    -- If we checked to see if found = NULL it would always be FALSE
-    -- because (NULL = NULL) is always FALSE.
-    IF found IS NULL THEN
+    IF NOT found THEN
       -- If we didn't find a collision then leave the LOOP.
       EXIT;
     END IF;
